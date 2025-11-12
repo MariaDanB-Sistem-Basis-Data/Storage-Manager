@@ -1,4 +1,4 @@
-from data_encoder import DataEncoder
+from .data_encoder import DataEncoder
 
 class RowSerializer:
     def __init__(self):
