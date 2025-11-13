@@ -3,14 +3,15 @@ import struct
 import os
 
 class SchemaManager:
-    def __init__(self):
+    def __init__(self, base_path='data'):
         self.schemas = {}
+        self.base_path = base_path
 
     def add_table_schema(self, table_name, schema):
         self.schemas[table_name] = schema
 
     def save_schemas(self):
-        path = os.path.join('data/', 'schema.dat')
+        path = os.path.join(self.base_path, 'schema.dat')
         with open(path, 'wb') as f:
             f.write(struct.pack('i', len(self.schemas)))
 
@@ -24,7 +25,7 @@ class SchemaManager:
                 f.write(schema_data)
     
     def load_schemas(self):
-        path = os.path.join('data/', 'schema.dat')
+        path = os.path.join(self.base_path, 'schema.dat')
         self.schemas = {}
         with open(path, 'rb') as f:
             num_tables_bytes = f.read(4)

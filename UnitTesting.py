@@ -1,3 +1,5 @@
+import os
+import shutil
 from StorageManager import StorageManager
 from model.data_retrieval import DataRetrieval
 from model.condition import Condition
@@ -124,14 +126,8 @@ def main():
             column="*"
         )
         sm.read_block(req)
-    except FileNotFoundError as fe:
+    except (FileNotFoundError, ValueError) as fe:
         print("Caught expected error:", fe)
-
-if __name__ == "__main__":
-    main()
-import os
-import shutil
-from StorageManager import StorageManager
 
 def test_get_stats_single_table():
     print("Test 1: get_stats with single table from data folder")
@@ -257,25 +253,34 @@ def test_distinct_values():
         print("  No tables found in data folder")
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("Running StorageManager get_stats() Tests (Using data folder)")
-    print("=" * 60)
+    choice = input("Run which tests? (1=read_block tests, 2=get_stats tests, 3=both): ").strip()
     
-    try:
-        test_get_stats_single_table()
-        test_get_stats_all_tables()
-        test_get_stats_empty_parameter()
-        test_get_stats_nonexistent_table()
-        test_blocking_factor_calculation()
-        test_distinct_values()
-        
+    if choice == "1" or choice == "3":
         print("\n" + "=" * 60)
-        print("All tests passed successfully!")
+        print("RUNNING READ_BLOCK TESTS")
+        print("=" * 60)
+        main()
+    
+    if choice == "2" or choice == "3":
+        print("\n" + "=" * 60)
+        print("RUNNING GET_STATS TESTS")
         print("=" * 60)
         
-    except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
-    except Exception as e:
-        print(f"\n✗ Error occurred: {e}")
-        import traceback
-        traceback.print_exc()
+        try:
+            test_get_stats_single_table()
+            test_get_stats_all_tables()
+            test_get_stats_empty_parameter()
+            test_get_stats_nonexistent_table()
+            test_blocking_factor_calculation()
+            test_distinct_values()
+            
+            print("\n" + "=" * 60)
+            print("All get_stats tests passed successfully!")
+            print("=" * 60)
+            
+        except AssertionError as e:
+            print(f"\n✗ Test failed: {e}")
+        except Exception as e:
+            print(f"\n✗ Error occurred: {e}")
+            import traceback
+            traceback.print_exc()

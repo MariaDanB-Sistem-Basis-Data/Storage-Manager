@@ -10,8 +10,9 @@ from model.data_retrieval import DataRetrieval
 class StorageManager:
     def __init__(self, base_path='data'):
         self.base_path = base_path
+        self.storage_path = base_path
         self.row_serializer = RowSerializer()
-        self.schema_manager = SchemaManager()
+        self.schema_manager = SchemaManager(base_path)
         
         if not os.path.exists(self.storage_path):
             os.makedirs(self.storage_path)
