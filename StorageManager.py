@@ -1,11 +1,11 @@
 import os
 import math
-from helper.row_serializer import RowSerializer
-from model.statistic import Statistic
-from helper.schema_manager import SchemaManager
-from helper.slotted_page import SlottedPage, PAGE_SIZE
-from model.condition import Condition
-from model.data_retrieval import DataRetrieval
+from storagemanager_helper.row_serializer import RowSerializer
+from storagemanager_model.statistic import Statistic
+from storagemanager_helper.schema_manager import SchemaManager
+from storagemanager_helper.slotted_page import SlottedPage, PAGE_SIZE
+from storagemanager_model.condition import Condition
+from storagemanager_model.data_retrieval import DataRetrieval
 
 class StorageManager:
     def __init__(self, base_path='data'):

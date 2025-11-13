@@ -1,9 +1,9 @@
 import os
 import shutil
 from StorageManager import StorageManager
-from model.data_retrieval import DataRetrieval
-from model.data_write import DataWrite
-from model.condition import Condition
+from storagemanager_model.data_retrieval import DataRetrieval
+from storagemanager_model.data_write import DataWrite
+from storagemanager_model.condition import Condition
 
 def print_section(title):
     print("\n" + "=" * 60)

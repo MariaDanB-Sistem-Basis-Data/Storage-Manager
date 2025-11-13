@@ -4,10 +4,10 @@ import random
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from helper.schema import Schema
-from helper.schema_manager import SchemaManager
-from helper.row_serializer import RowSerializer
-from helper.slotted_page import SlottedPage  
+from storagemanager_helper.schema import Schema
+from storagemanager_helper.schema_manager import SchemaManager
+from storagemanager_helper.row_serializer import RowSerializer
+from storagemanager_helper.slotted_page import SlottedPage  
 
 os.makedirs("data", exist_ok=True)
 
