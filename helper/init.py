@@ -1,9 +1,13 @@
 import os
+import sys
 import random
-from .schema import Schema
-from .schema_manager import SchemaManager
-from .row_serializer import RowSerializer
-from .slotted_page import SlottedPage  
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from helper.schema import Schema
+from helper.schema_manager import SchemaManager
+from helper.row_serializer import RowSerializer
+from helper.slotted_page import SlottedPage  
 
 
 student = Schema()
@@ -63,20 +67,31 @@ def write_with_pages(table_name, schema, records):
     page = SlottedPage()
     pages = []
     
-    for record in records:
+    for i, record in enumerate(records):
         record_bytes = serializer.serialize(schema, record)
         try:
             page.add_record(record_bytes)
-        except ValueError:
-            
-            pages.append(page)
-            page = SlottedPage()
-            page.add_record(record_bytes)
+        except Exception as e:
+            # Page is full, save it and create a new one
+            if page.record_count > 0:
+                pages.append(page)
+                page = SlottedPage()
+                try:
+                    page.add_record(record_bytes)
+                except Exception as e2:
+                    print(f"ERROR: Record {i} is too large to fit in a page ({len(record_bytes)} bytes)")
+                    print(f"Record: {record}")
+                    raise e2
+            else:
+                print(f"ERROR: Record {i} is too large to fit in an empty page ({len(record_bytes)} bytes)")
+                print(f"Record: {record}")
+                raise e
     
-    
-    pages.append(page)
+    # Don't forget the last page
+    if page.record_count > 0:
+        pages.append(page)
 
-    
+    # Write all pages to file
     with open(file_path, "wb") as f:
         for p in pages:
             f.write(p.serialize())
