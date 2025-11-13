@@ -1,9 +1,9 @@
 import os
 import random
-from .schema import Schema
-from .schema_manager import SchemaManager
-from .row_serializer import RowSerializer
-from .slotted_page import SlottedPage  
+from schema import Schema
+from schema_manager import SchemaManager
+from row_serializer import RowSerializer
+from slotted_page import SlottedPage  
 
 
 student = Schema()
@@ -67,8 +67,7 @@ def write_with_pages(table_name, schema, records):
         record_bytes = serializer.serialize(schema, record)
         try:
             page.add_record(record_bytes)
-        except ValueError:
-            
+        except Exception:
             pages.append(page)
             page = SlottedPage()
             page.add_record(record_bytes)
@@ -84,9 +83,9 @@ def write_with_pages(table_name, schema, records):
     print(f"Wrote {len(records)} records into {len(pages)} page(s): {file_path}")
 
 
-write_with_pages("Student", student, students)
-write_with_pages("Course", course, courses)
-write_with_pages("Attends", attends, attends_records)
+write_with_pages("student", student, students)
+write_with_pages("course", course, courses)
+write_with_pages("attends", attends, attends_records)
 
 
 loader = SchemaManager()
