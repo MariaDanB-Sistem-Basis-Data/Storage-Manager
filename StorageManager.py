@@ -6,13 +6,15 @@ from storagemanager_helper.schema_manager import SchemaManager
 from storagemanager_helper.slotted_page import SlottedPage, PAGE_SIZE
 from storagemanager_model.condition import Condition
 from storagemanager_model.data_retrieval import DataRetrieval
-
+from storagemanager_model.index import HashIndexEntry
+from storagemanager_helper.index import HashIndexManager
 class StorageManager:
     def __init__(self, base_path='data'):
         self.base_path = base_path
         self.storage_path = base_path
         self.row_serializer = RowSerializer()
         self.schema_manager = SchemaManager(base_path)
+        self.hash_index_manager = HashIndexManager(base_path)
         
         if not os.path.exists(self.storage_path):
             os.makedirs(self.storage_path)
@@ -43,34 +45,67 @@ class StorageManager:
             if cond.column not in schema_attrs:
                 raise ValueError(f"Kolom '{cond.column}' tidak ada di tabel '{table}'")
 
-        table_path = os.path.join(self.base_path, f"{table}.dat")
-        if not os.path.exists(table_path):
-            raise FileNotFoundError(f"File data '{table_path}' tidak ditemukan")
+        index_used = False
+        if len(conditions) == 1 and conditions[0].operation == "=":
+            cond = conditions[0]
+            index_locations = self.hash_index_manager.search(table, cond.column, cond.operand)
+            
+            if index_locations:
+                index_used = True
+                results = []
+                table_path = os.path.join(self.base_path, f"{table}.dat")
+                
+                with open(table_path, "rb") as f:
+                    for page_id, slot_id in index_locations:
+                        f.seek(page_id * PAGE_SIZE)
+                        page_bytes = f.read(PAGE_SIZE)
+                        
+                        if len(page_bytes) < PAGE_SIZE:
+                            page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
+                        
+                        page = SlottedPage()
+                        page.load(page_bytes)
+                        
+                        try:
+                            record_bytes = page.get_record(slot_id)
+                            row = self.row_serializer.deserialize(schema, record_bytes)
+                            results.append(self._project(row, columns))
+                        except:
+                            pass 
+                
+                return results
+        
+        # Full table scan
+        if not index_used:
 
-        results = []
+            table_path = os.path.join(self.base_path, f"{table}.dat")
+            if not os.path.exists(table_path):
+                raise FileNotFoundError(f"File data '{table_path}' tidak ditemukan")
 
-        with open(table_path, "rb") as f:
-            while True:
-                page_bytes = f.read(PAGE_SIZE)
-                if not page_bytes:
-                    break
-                if len(page_bytes) < PAGE_SIZE:
-                    page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
+            results = []
 
-                page = SlottedPage()
-                page.load(page_bytes)
+            with open(table_path, "rb") as f:
+                while True:
+                    page_bytes = f.read(PAGE_SIZE)
+                    if not page_bytes:
+                        break
+                    if len(page_bytes) < PAGE_SIZE:
+                        page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
 
-                for slot_idx in range(page.record_count):
-                    try:
-                        record_bytes = page.get_record(slot_idx)
-                        row = self.row_serializer.deserialize(schema, record_bytes)
-                    except Exception as e:
-                        raise ValueError(f"Gagal decode record: {e}")
+                    page = SlottedPage()
+                    page.load(page_bytes)
 
-                    if not self._match_all(row, conditions):
-                        continue
+                    for slot_idx in range(page.record_count):
+                        try:
+                            record_bytes = page.get_record(slot_idx)
+                            row = self.row_serializer.deserialize(schema, record_bytes)
+                        except Exception as e:
+                            raise ValueError(f"Gagal decode record: {e}")
 
-                    results.append(self._project(row, columns))
+                        if not self._match_all(row, conditions):
+                            continue
+
+                        results.append(self._project(row, columns))
 
         return results
 
@@ -139,32 +174,50 @@ class StorageManager:
 
     def _insert_record(self, table_path, schema, new_record):
         record_bytes = self.row_serializer.serialize(schema, new_record)
+        table_name = os.path.basename(table_path)[:-4]
 
         with open(table_path, "rb+") as f:
             f.seek(0, os.SEEK_END)
             file_size = f.tell()
+
             if file_size == 0:
                 page = SlottedPage()
+                page_id = 0
+                slot_id= page.add_record(record_bytes)
+                f.seek(0)
+                f.write(page.serialize())
             else:
-                f.seek(file_size - PAGE_SIZE)
+                page_id = (file_size // PAGE_SIZE) - 1
+                f.seek(page_id * PAGE_SIZE)
                 page_bytes = f.read(PAGE_SIZE)
+
                 page = SlottedPage()
                 page.load(page_bytes)
 
             try:
-                page.add_record(record_bytes)
-                f.seek(file_size - PAGE_SIZE)
+                slot_id = page.add_record(record_bytes)
+                f.seek(page_id * PAGE_SIZE)
+                f.write(page.serialize())
             except Exception:
                 f.seek(0, os.SEEK_END)
                 page = SlottedPage()
-                page.add_record(record_bytes)
-
-            f.write(page.serialize())
+                page_id = file_size // PAGE_SIZE
+                slot_id = page.add_record(record_bytes)
+                f.write(page.serialize())
+        
+        indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in indexes:
+            column_name = idx['column']
+            key_value = new_record.get(column_name)
+            self.hash_index_manager.insert_entry(table_name, column_name, key_value, page_id, slot_id)
+            self.hash_index_manager.save_index(table_name, column_name)
+        
         
         return 1
 
     def _update_record(self, table_path, schema, conditions, column, new_value):
         rows_affected = 0
+        table_name = os.path.basename(table_path)[:-4]
 
         if not isinstance(new_value, dict):
             if isinstance(column, list) and len(column) == 1:
@@ -175,28 +228,59 @@ class StorageManager:
                 raise ValueError("new_value must be a dictionary")
         
         with open(table_path, "rb+") as f:
-            pages = []
-            while page_bytes := f.read(PAGE_SIZE):
+            page_id = 0
+
+            while True:
+                page_start = page_id * PAGE_SIZE
+                f.seek(page_start)
+                page_bytes = f.read(PAGE_SIZE)
+                if not page_bytes:
+                    break
+                
+                if len(page_bytes) < PAGE_SIZE:
+                    page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
+                
                 page = SlottedPage()
                 page.load(page_bytes)
+                
+                page_modified = False 
 
-                for i in range(page.record_count):
-                    record_bytes = page.get_record(i)
-                    record = self.row_serializer.deserialize(schema, record_bytes)
+                for slot_id in range(page.record_count):
+                    try:  
+                        record_bytes = page.get_record(slot_id)
+                        record = self.row_serializer.deserialize(schema, record_bytes)
+                    except:
+                        continue  
 
                     if self._match_all(record, conditions):
+                      
+                        indexes = self.hash_index_manager.list_indexes(table_name)
+                        for idx in indexes:
+                            column_name = idx['column']
+                            if column_name in new_value:
+                                old_key = record[column_name]
+                                new_key = new_value[column_name]
+                                self.hash_index_manager.update_entry(
+                                    table_name, column_name, old_key, new_key, page_id, slot_id
+                                )
+                        
                         for col in column:
                             record[col] = new_value[col]
 
                         new_record_bytes = self.row_serializer.serialize(schema, record)
-                        page.update_record(i, new_record_bytes)
+                        page.update_record(slot_id, new_record_bytes)
+                        page_modified = True 
                         rows_affected += 1
                 
-                pages.append(page)
-        
-            f.seek(0)
-            for page in pages:
-                f.write(page.serialize())
+                if page_modified:
+                    f.seek(page_start)
+                    f.write(page.serialize())
+                
+                page_id += 1
+       
+        indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in indexes:
+            self.hash_index_manager.save_index(table_name, idx['column'])
             
         return rows_affected
 
@@ -205,8 +289,28 @@ class StorageManager:
         pass
 
     def set_index(self, table, column, index_type):
-        # Implementation for setting an index on a specified table and column
-        pass
+        schema = self.schema_manager.get_table_schema(table)
+        if schema is None:
+            raise ValueError(f"Tabel '{table}' tidak ditemukan")
+        
+        schema_attrs = [attr["name"] for attr in schema.get_attributes()]
+        if column not in schema_attrs:
+            raise ValueError(f"Kolom '{column}' tidak ada di tabel '{table}'")
+    
+        if index_type.lower() == 'hash':
+            self.hash_index_manager.rebuild_index(table, column, self)
+            print(f"Hash index created on {table}.{column}")
+            
+            stats = self.hash_index_manager.get_index_stats(table, column)
+            if stats:
+                print(f"  Entries: {stats['num_entries']}")
+                print(f"  Buckets used: {stats['non_empty_buckets']}/{stats['num_buckets']}")
+                print(f"  Utilization: {stats['utilization']:.2f}%")
+                print(f"  Avg chain length: {stats['avg_chain_length']:.2f}")
+            
+            return True
+        else:
+            raise ValueError(f"Index type '{index_type}' tidak tersedia. Hanya 'hash' yang didukung.")        
 
     def get_stats(self, table_name=None):
         if table_name is None or table_name == '':
