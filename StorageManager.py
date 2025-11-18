@@ -299,15 +299,7 @@ class StorageManager:
     
         if index_type.lower() == 'hash':
             self.hash_index_manager.rebuild_index(table, column, self)
-            print(f"Hash index created on {table}.{column}")
-            
-            stats = self.hash_index_manager.get_index_stats(table, column)
-            if stats:
-                print(f"  Entries: {stats['num_entries']}")
-                print(f"  Buckets used: {stats['non_empty_buckets']}/{stats['num_buckets']}")
-                print(f"  Utilization: {stats['utilization']:.2f}%")
-                print(f"  Avg chain length: {stats['avg_chain_length']:.2f}")
-            
+        
             return True
         else:
             raise ValueError(f"Index type '{index_type}' tidak tersedia. Hanya 'hash' yang didukung.")        
