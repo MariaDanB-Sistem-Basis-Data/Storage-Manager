@@ -4,6 +4,7 @@ from StorageManager import StorageManager
 from storagemanager_model.data_retrieval import DataRetrieval
 from storagemanager_model.data_write import DataWrite
 from storagemanager_model.condition import Condition
+from storagemanager_model.data_deletion import DataDeletion
 
 def print_section(title):
     print("\n" + "=" * 60)
@@ -92,6 +93,39 @@ def test_update_record(sm: StorageManager):
 
     print_section("VERIFY UPDATE: SELECT * FROM Student WHERE StudentID = 3")
     cond = Condition("StudentID", "=", 3)
+    read_req = DataRetrieval(
+        table="Student",
+        column="*",
+        conditions=[cond]
+    )
+    rows = sm.read_block(read_req)
+    print(f"Found {len(rows)} rows")
+    for r in rows:
+        print(r)
+
+def test_delete_record(sm: StorageManager):
+    print_section("TEST 11: DELETE RECORD FROM Student")
+    print_section("CHECK BEFORE DELETION DELETION: SELECT * FROM Student WHERE StudentID = 4")
+    cond = Condition("StudentID", "=", 4)
+    read_req = DataRetrieval(
+        table="Student",
+        column="*",
+        conditions=[cond]
+    )
+    rows = sm.read_block(read_req)
+    print(f"Found {len(rows)} rows")
+    for r in rows:
+        print(r)
+    delete_req = DataDeletion(
+        table = "Student",
+        conditions = [Condition("StudentID", "=", 4)]
+    )
+    row_affected = sm.delete_block(delete_req)
+    print(f"Rows affected: {row_affected}")
+    print("Deleted record with StudentID 4")
+
+    print_section("VERIFY DELETION: SELECT * FROM Student WHERE StudentID = 4")
+    cond = Condition("StudentID", "=", 4)
     read_req = DataRetrieval(
         table="Student",
         column="*",
