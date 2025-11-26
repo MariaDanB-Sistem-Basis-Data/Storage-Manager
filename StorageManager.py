@@ -367,16 +367,17 @@ class StorageManager:
         schema = self.schema_manager.get_table_schema(table_name)
         
         if schema is None:
-            return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={})
+            return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={}, i_r={})
         
         table_file = os.path.join(self.storage_path, f"{table_name}.dat")
         
         if not os.path.exists(table_file):
-            return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={})
+            return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={}, i_r={})
         
         n_r = 0
         l_r = 0
         v_a_r = {}
+        i_r = {}
         
         attributes = schema.get_attributes()
         for attr in attributes:
@@ -425,6 +426,27 @@ class StorageManager:
         for attr_name, values in distinct_values.items():
             v_a_r[attr_name] = len(values)
         
+        for attr in attributes:
+            attr_name = attr['name']
+            i_r[attr_name] = {'Type': 'none', 'Value': None}
+        
+        indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in indexes:
+            column_name = idx['column']
+            index_type = idx['type']
+            
+            if index_type == 'hash':
+                index_data = self.hash_index_manager.load_index(table_name, column_name)
+                if index_data:
+                    num_buckets = index_data.get('num_buckets', 200)  # Default 200 if not found
+                    i_r[column_name] = {'Type': 'hash', 'Value': num_buckets}
+                else:
+                    i_r[column_name] = {'Type': 'hash', 'Value': 200} 
+            # Future: add b+ tree support
+            # elif index_type == 'bplus':
+            #     depth = get_btree_depth(table_name, column_name)
+            #     i_r[column_name] = {'Type': 'b+', 'Value': depth}
+        
         page_size = 4096
         if l_r > 0:
             f_r = page_size // l_r
@@ -438,4 +460,4 @@ class StorageManager:
         else:
             b_r = page_count
         
-        return Statistic(n_r=n_r, b_r=b_r, l_r=l_r, f_r=f_r, v_a_r=v_a_r)
+        return Statistic(n_r=n_r, b_r=b_r, l_r=l_r, f_r=f_r, v_a_r=v_a_r, i_r=i_r)
