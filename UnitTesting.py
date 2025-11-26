@@ -5,6 +5,7 @@ from storagemanager_model.data_retrieval import DataRetrieval
 from storagemanager_model.data_write import DataWrite
 from storagemanager_model.condition import Condition
 from storagemanager_model.data_deletion import DataDeletion
+from storagemanager_model.data_retrieval import DataRetrieval
 
 def print_section(title):
     print("\n" + "=" * 60)
@@ -339,8 +340,52 @@ def test_distinct_values():
     else:
         print("  No tables found in data folder")
 
+def test_hash_index():
+
+    print ("testing hash index functionality")
+    
+    sm = StorageManager()
+
+    # Test 1: Create hash index
+    print("\nTest 1: Create hash index on Student.StudentID")
+    sm.set_index("Student", "StudentID", "hash")
+    
+    # Test 2: Search using index 
+    print("\nTest 2: SELECT * FROM Student WHERE StudentID = 3")
+    req = DataRetrieval(
+        table="Student",
+        column="*",
+        conditions=[Condition("StudentID", "=", 3)]
+    )
+    results = sm.read_block(req)
+    print(f"Found {len(results)} rows using hash index:")
+    for r in results:
+        print(r)
+    
+    # Test 3: List all indexes
+    print("\nTest 3: List all indexes")
+    indexes = sm.hash_index_manager.list_indexes()
+    for idx in indexes:
+        print(f"  {idx['table']}.{idx['column']} ({idx['type']})")
+    
+    # Test 4: Get index statistics
+    print("\nTest 4: Index statistics")
+    stats = sm.hash_index_manager.get_index_stats("Student", "StudentID")
+    if stats:
+        print(f"  Table: {stats['table']}")
+        print(f"  Column: {stats['column']}")
+        print(f"  Entries: {stats['num_entries']}")
+        print(f"  Buckets: {stats['num_buckets']}")
+        print(f"  Non-empty buckets: {stats['non_empty_buckets']}")
+        print(f"  Utilization: {stats['utilization']:.2f}%")
+        print(f"  Max chain length: {stats['max_chain_length']}")
+        print(f"  Avg chain length: {stats['avg_chain_length']:.2f}")
+    
+    print ("\n indeks sukses")
+
+
 if __name__ == '__main__':
-    choice = input("Run which tests? (1=read_block tests, 2=get_stats tests, 3=both): ").strip()
+    choice = input("Run which tests? (1=read_block tests, 2=get_stats tests, 3=both, 4=index): ").strip()
     
     if choice == "1" or choice == "3":
         print("\n" + "=" * 60)
@@ -371,3 +416,8 @@ if __name__ == '__main__':
             print(f"\n✗ Error occurred: {e}")
             import traceback
             traceback.print_exc()
+    if choice == "4":
+        print("Running hash index tests\n")
+        test_hash_index()
+        
+
