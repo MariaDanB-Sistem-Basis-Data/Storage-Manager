@@ -384,8 +384,80 @@ def test_hash_index():
     print ("\n indeks sukses")
 
 
+def test_btree_index():
+    print("Testing B+ Tree Index Integration with get_stats()")
+    
+    sm = StorageManager()
+    
+    # Test 1: Get current stats for Student table
+    print("\n1. Getting current stats for Student table...")
+    stats = sm.get_stats("Student")
+    print(f"   n_r (records): {stats.n_r}")
+    print(f"   Current index info (i_r):")
+    for col, info in stats.i_r.items():
+        print(f"      {col}: Type={info['Type']}, Value={info['Value']}")
+    
+    # Test 2: Create B+ tree index on StudentID
+    print("\n2. Creating BTREE index on StudentID...")
+    sm.set_index("Student", "StudentID", "btree")
+    stats = sm.get_stats("Student")
+    print("✓ B+ tree index created")
+    print(f"   Index info after creating btree on StudentID:")
+    for col, info in stats.i_r.items():
+        print(f"      {col}: Type={info['Type']}, Value={info['Value']}")
+    
+    # Test 3: Create B+ tree index on GPA
+    print("\n3. Creating BTREE index on GPA...")
+    sm.set_index("Student", "GPA", "btree")
+    stats = sm.get_stats("Student")
+    print("✓ B+ tree index created")
+    print(f"   Index info after creating btree on GPA:")
+    for col, info in stats.i_r.items():
+        print(f"      {col}: Type={info['Type']}, Value={info['Value']}")
+    
+    # Test 4: Create hash index on FullName for mixed type test
+    print("\n4. Creating HASH index on FullName (for mixed type test)...")
+    sm.set_index("Student", "FullName", "hash")
+    stats = sm.get_stats("Student")
+    print("✓ Hash index created")
+    print(f"   Index info with mixed types:")
+    for col, info in stats.i_r.items():
+        print(f"      {col}: Type={info['Type']}, Value={info['Value']}")
+    
+    # Test 5: Format validation
+    print("\n5. Format validation:")
+    all_correct = True
+    for col, info in stats.i_r.items():
+        if not isinstance(info, dict):
+            print(f"   ✗ {col}: Not a dict")
+            all_correct = False
+        elif 'Type' not in info or 'Value' not in info:
+            print(f"   ✗ {col}: Missing Type or Value key")
+            all_correct = False
+        elif info['Type'] not in ['hash', 'btree', 'none']:
+            print(f"   ✗ {col}: Invalid Type '{info['Type']}'")
+            all_correct = False
+        else:
+            print(f"   ✓ {col}: Format correct - Type={info['Type']}, Value={info['Value']}")
+    
+    # Test 6: Test get_stats() for all tables
+    print("\n6. Testing get_stats() for all tables...")
+    all_stats = sm.get_stats()
+    for table, table_stats in all_stats.items():
+        print(f"\n   Table: {table}")
+        print(f"      Records (n_r): {table_stats.n_r}")
+        print(f"      Indexes:")
+        for col, info in table_stats.i_r.items():
+            print(f"         {col}: Type={info['Type']}, Value={info['Value']}")
+    
+    if all_correct:
+        print("\n✓ All B+ tree index tests passed!")
+    else:
+        print("\n✗ Some tests failed!")
+
+
 if __name__ == '__main__':
-    choice = input("Run which tests? (1=read_block tests, 2=get_stats tests, 3=both, 4=index): ").strip()
+    choice = input("Run which tests? (1=read_block, 2=get_stats, 3=both, 4=hash index, 5=btree index): ").strip()
     
     if choice == "1" or choice == "3":
         print("\n" + "=" * 60)
@@ -416,8 +488,12 @@ if __name__ == '__main__':
             print(f"\n✗ Error occurred: {e}")
             import traceback
             traceback.print_exc()
+    
     if choice == "4":
         print("Running hash index tests\n")
         test_hash_index()
+    
+    if choice == "5":
+        print("Running B+ tree index tests\n")
+        test_btree_index()
         
-

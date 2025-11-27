@@ -440,6 +440,19 @@ class StorageManager:
         else:
             raise ValueError(f"Index type '{index_type}' tidak tersedia.")        
 
+    def _calculate_tree_depth(self, node):
+        if node is None:
+            return 0
+        
+        if node.is_leaf:
+            return 1
+        
+        # For internal nodes, recurse on first child and add 1
+        if node.children:
+            return 1 + self._calculate_tree_depth(node.children[0])
+        
+        return 1
+    
     def get_stats(self, table_name=None):
         if table_name is None or table_name == '':
             return self._get_all_stats()
@@ -522,8 +535,8 @@ class StorageManager:
             attr_name = attr['name']
             i_r[attr_name] = {'Type': 'none', 'Value': None}
         
-        indexes = self.hash_index_manager.list_indexes(table_name)
-        for idx in indexes:
+        hash_indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in hash_indexes:
             column_name = idx['column']
             index_type = idx['type']
             
@@ -533,11 +546,21 @@ class StorageManager:
                     num_buckets = index_data.get('num_buckets', 200)  # Default 200 if not found
                     i_r[column_name] = {'Type': 'hash', 'Value': num_buckets}
                 else:
-                    i_r[column_name] = {'Type': 'hash', 'Value': 200} 
-            # Future: add b+ tree support
-            # elif index_type == 'bplus':
-            #     depth = get_btree_depth(table_name, column_name)
-            #     i_r[column_name] = {'Type': 'b+', 'Value': depth}
+                    i_r[column_name] = {'Type': 'hash', 'Value': 200}
+        
+        # Collect B+ tree indexes
+        btree_indexes = self.bplus_tree_index_manager.list_indexes(table_name)
+        for idx in btree_indexes:
+            column_name = idx['column']
+            index_type = idx['type']
+            
+            if index_type == 'btree':
+                index_data = self.bplus_tree_index_manager.load_index(table_name, column_name)
+                if index_data and index_data.get('root'):
+                    depth = self._calculate_tree_depth(index_data['root'])
+                    i_r[column_name] = {'Type': 'btree', 'Value': depth}
+                else:
+                    i_r[column_name] = {'Type': 'btree', 'Value': 0}
         
         page_size = 4096
         if l_r > 0:
