@@ -332,7 +332,7 @@ class StorageManager:
         return rows_deleted
 
 
-    def set_index(self, table, column, index_type):
+    def _set_index(self, table, column, index_type):
         schema = self.schema_manager.get_table_schema(table)
         if schema is None:
             raise ValueError(f"Tabel '{table}' tidak ditemukan")
