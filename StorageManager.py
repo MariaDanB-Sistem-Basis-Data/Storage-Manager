@@ -7,7 +7,7 @@ from storagemanager_helper.slotted_page import SlottedPage, PAGE_SIZE
 from storagemanager_model.condition import Condition
 from storagemanager_model.data_retrieval import DataRetrieval
 from storagemanager_model.index import HashIndexEntry
-from storagemanager_helper.index import HashIndexManager
+from storagemanager_helper.index import HashIndexManager, BPlusTreeIndexManager
 class StorageManager:
     def __init__(self, base_path='data'):
         self.base_path = base_path
@@ -15,6 +15,7 @@ class StorageManager:
         self.row_serializer = RowSerializer()
         self.schema_manager = SchemaManager(base_path)
         self.hash_index_manager = HashIndexManager(base_path)
+        self.bplus_tree_index_manager = BPlusTreeIndexManager(base_path)
         
         if not os.path.exists(self.storage_path):
             os.makedirs(self.storage_path)
@@ -46,35 +47,104 @@ class StorageManager:
                 raise ValueError(f"Kolom '{cond.column}' tidak ada di tabel '{table}'")
 
         index_used = False
-        if len(conditions) == 1 and conditions[0].operation == "=":
+        results = []
+
+        if len(conditions) == 1:
             cond = conditions[0]
-            index_locations = self.hash_index_manager.search(table, cond.column, cond.operand)
+            if cond.operation == "=":
+                index_locations = self.hash_index_manager.search(table, cond.column, cond.operand)
+                
+                if not index_locations:
+                    index_locations = self.bplus_tree_index_manager.search(table, cond.column, cond.operand)
+
+                if index_locations:
+                    index_used = True
+                    table_path = os.path.join(self.base_path, f"{table}.dat")
+                    
+                    with open(table_path, "rb") as f:
+                        for page_id, slot_id in index_locations:
+                            f.seek(page_id * PAGE_SIZE)
+                            page_bytes = f.read(PAGE_SIZE)
+                            
+                            if len(page_bytes) < PAGE_SIZE:
+                                page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
+                            
+                            page = SlottedPage()
+                            page.load(page_bytes)
+                            
+                            try:
+                                record_bytes = page.get_record(slot_id)
+                                row = self.row_serializer.deserialize(schema, record_bytes)
+                                results.append(self._project(row, columns))
+                            except:
+                                pass 
             
-            if index_locations:
-                index_used = True
-                results = []
-                table_path = os.path.join(self.base_path, f"{table}.dat")
+            elif cond.operation in (">", "<", ">=", "<="):
+                btree_indexes = self.bplus_tree_index_manager.list_indexes(table)
+                has_btree = any(idx['column'] == cond.column for idx in btree_indexes)
                 
-                with open(table_path, "rb") as f:
-                    for page_id, slot_id in index_locations:
-                        f.seek(page_id * PAGE_SIZE)
-                        page_bytes = f.read(PAGE_SIZE)
-                        
-                        if len(page_bytes) < PAGE_SIZE:
-                            page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
-                        
-                        page = SlottedPage()
-                        page.load(page_bytes)
-                        
-                        try:
-                            record_bytes = page.get_record(slot_id)
-                            row = self.row_serializer.deserialize(schema, record_bytes)
-                            results.append(self._project(row, columns))
-                        except:
-                            pass 
-                
-                return results
-        
+                if has_btree:
+                    index_used = True
+                    table_path = os.path.join(self.base_path, f"{table}.dat")
+                    
+                    if cond.operation in (">", ">="):
+                        index_data = self.bplus_tree_index_manager.load_index(table, cond.column)
+                        if index_data and index_data['root']:
+                            node = index_data['root']
+                            while not node.is_leaf:
+                                node = node.children[-1]
+                            max_key = node.keys[-1] if node.keys else cond.operand
+                            
+                            if cond.operation == ">":
+                                range_results = self.bplus_tree_index_manager.range_search(
+                                    table, cond.column, cond.operand, max_key
+                                )
+                                range_results = [(k, v) for k, v in range_results if k > cond.operand]
+                            else:  # >=
+                                range_results = self.bplus_tree_index_manager.range_search(
+                                    table, cond.column, cond.operand, max_key
+                                )
+                        else:
+                            range_results = []
+                    
+                    else:  # < or <=
+                        index_data = self.bplus_tree_index_manager.load_index(table, cond.column)
+                        if index_data and index_data['root']:
+                            node = index_data['root']
+                            while not node.is_leaf:
+                                node = node.children[0]
+                            min_key = node.keys[0] if node.keys else cond.operand
+                            
+                            if cond.operation == "<":
+                                range_results = self.bplus_tree_index_manager.range_search(
+                                    table, cond.column, min_key, cond.operand
+                                )
+                                range_results = [(k, v) for k, v in range_results if k < cond.operand]
+                            else:  # <=
+                                range_results = self.bplus_tree_index_manager.range_search(
+                                    table, cond.column, min_key, cond.operand
+                                )
+                        else:
+                            range_results = []
+                    
+                    with open(table_path, "rb") as f:
+                        for key, (page_id, slot_id) in range_results:
+                            f.seek(page_id * PAGE_SIZE)
+                            page_bytes = f.read(PAGE_SIZE)
+                            
+                            if len(page_bytes) < PAGE_SIZE:
+                                page_bytes = page_bytes.ljust(PAGE_SIZE, b"\x00")
+                            
+                            page = SlottedPage()
+                            page.load(page_bytes)
+                            
+                            try:
+                                record_bytes = page.get_record(slot_id)
+                                row = self.row_serializer.deserialize(schema, record_bytes)
+                                results.append(self._project(row, columns))
+                            except:
+                                pass
+    
         # Full table scan
         if not index_used:
 
@@ -205,12 +275,19 @@ class StorageManager:
                 slot_id = page.add_record(record_bytes)
                 f.write(page.serialize())
         
-        indexes = self.hash_index_manager.list_indexes(table_name)
-        for idx in indexes:
+        hash_indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in hash_indexes:
             column_name = idx['column']
             key_value = new_record.get(column_name)
             self.hash_index_manager.insert_entry(table_name, column_name, key_value, page_id, slot_id)
             self.hash_index_manager.save_index(table_name, column_name)
+        
+        btree_indexes = self.bplus_tree_index_manager.list_indexes(table_name)
+        for idx in btree_indexes:
+            column_name = idx['column']
+            key_value = new_record.get(column_name)
+            self.bplus_tree_index_manager.insert_entry(table_name, column_name, key_value, page_id, slot_id)
+            self.bplus_tree_index_manager.save_index(table_name, column_name)
         
         
         return 1
@@ -254,8 +331,8 @@ class StorageManager:
 
                     if self._match_all(record, conditions):
                       
-                        indexes = self.hash_index_manager.list_indexes(table_name)
-                        for idx in indexes:
+                        hash_indexes = self.hash_index_manager.list_indexes(table_name)
+                        for idx in hash_indexes:
                             column_name = idx['column']
                             if column_name in new_value:
                                 old_key = record[column_name]
@@ -263,7 +340,16 @@ class StorageManager:
                                 self.hash_index_manager.update_entry(
                                     table_name, column_name, old_key, new_key, page_id, slot_id
                                 )
-                        
+                        btree_indexes = self.bplus_tree_index_manager.list_indexes(table_name)
+                        for idx in btree_indexes:
+                            column_name = idx['column']
+                            if column_name in new_value:
+                                old_key = record[column_name]
+                                new_key = new_value[column_name]
+                                self.bplus_tree_index_manager.update_entry(
+                                    table_name, column_name, old_key, new_key, page_id, slot_id
+                                )
+
                         for col in column:
                             record[col] = new_value[col]
 
@@ -278,10 +364,14 @@ class StorageManager:
                 
                 page_id += 1
        
-        indexes = self.hash_index_manager.list_indexes(table_name)
-        for idx in indexes:
+        hash_indexes = self.hash_index_manager.list_indexes(table_name)
+        for idx in hash_indexes:
             self.hash_index_manager.save_index(table_name, idx['column'])
-            
+        
+        btree_indexes = self.bplus_tree_index_manager.list_indexes(table_name)
+        for idx in btree_indexes:
+            self.bplus_tree_index_manager.save_index(table_name, idx['column'])
+        
         return rows_affected
 
     def delete_block(self, data_deletion):
@@ -343,10 +433,12 @@ class StorageManager:
     
         if index_type.lower() == 'hash':
             self.hash_index_manager.rebuild_index(table, column, self)
-        
+            return True
+        elif index_type.lower() == 'btree':
+            self.bplus_tree_index_manager.rebuild_index(table, column, self)
             return True
         else:
-            raise ValueError(f"Index type '{index_type}' tidak tersedia. Hanya 'hash' yang didukung.")        
+            raise ValueError(f"Index type '{index_type}' tidak tersedia.")        
 
     def get_stats(self, table_name=None):
         if table_name is None or table_name == '':
