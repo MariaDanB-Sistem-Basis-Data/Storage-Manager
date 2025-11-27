@@ -1,7 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 class Schema:
-    def __init__(self, attributes: List[Dict[str, Any]] = None):
+    def __init__(self, attributes: Optional[List[Dict[str, Any]]] = None):
         self.attributes = attributes if attributes is not None else []
 
     def add_attribute(self, name, type, size):
@@ -38,7 +38,7 @@ class Schema:
         
         return data
     
-    def deserialize(self, data):
+    def deserialize(self, data: bytes):
         offset = 0
         attributes = []
 

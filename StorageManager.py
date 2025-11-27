@@ -24,6 +24,21 @@ class StorageManager:
         if os.path.exists(schema_file):
             self.schema_manager.load_schemas()
 
+    def _get_table_file_path(self, table_name: str) -> str:
+        exact_path = os.path.join(self.base_path, f"{table_name}.dat")
+        if os.path.exists(exact_path):
+            return exact_path
+        
+        lower_path = os.path.join(self.base_path, f"{table_name.lower()}.dat")
+        if os.path.exists(lower_path):
+            return lower_path
+        
+        upper_path = os.path.join(self.base_path, f"{table_name.upper()}.dat")
+        if os.path.exists(upper_path):
+            return upper_path
+        
+        return lower_path
+
     def read_block(self, data_retrieval: DataRetrieval):
         table = data_retrieval.table
         columns = data_retrieval.column
@@ -59,7 +74,7 @@ class StorageManager:
 
                 if index_locations:
                     index_used = True
-                    table_path = os.path.join(self.base_path, f"{table}.dat")
+                    table_path = self._get_table_file_path(table)
                     
                     with open(table_path, "rb") as f:
                         for page_id, slot_id in index_locations:
@@ -85,7 +100,7 @@ class StorageManager:
                 
                 if has_btree:
                     index_used = True
-                    table_path = os.path.join(self.base_path, f"{table}.dat")
+                    table_path = self._get_table_file_path(table)
                     
                     if cond.operation in (">", ">="):
                         index_data = self.bplus_tree_index_manager.load_index(table, cond.column)
@@ -148,7 +163,7 @@ class StorageManager:
         # Full table scan
         if not index_used:
 
-            table_path = os.path.join(self.base_path, f"{table}.dat")
+            table_path = self._get_table_file_path(table)
             if not os.path.exists(table_path):
                 raise FileNotFoundError(f"File data '{table_path}' tidak ditemukan")
 
@@ -221,7 +236,7 @@ class StorageManager:
         if schema is None:
             raise ValueError(f"Tabel '{table}' tidak ditemukan")
 
-        table_path = os.path.join(self.base_path, f"{table}.dat")
+        table_path = self._get_table_file_path(table)
         if not os.path.exists(table_path):
             raise FileNotFoundError(f"File data '{table_path}' tidak ditemukan")
 
@@ -422,7 +437,7 @@ class StorageManager:
         return rows_deleted
 
 
-    def set_index(self, table, column, index_type):
+    def _set_index(self, table, column, index_type):
         schema = self.schema_manager.get_table_schema(table)
         if schema is None:
             raise ValueError(f"Tabel '{table}' tidak ditemukan")
@@ -474,7 +489,7 @@ class StorageManager:
         if schema is None:
             return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={}, i_r={})
         
-        table_file = os.path.join(self.storage_path, f"{table_name}.dat")
+        table_file = self._get_table_file_path(table_name)
         
         if not os.path.exists(table_file):
             return Statistic(n_r=0, b_r=0, l_r=0, f_r=0, v_a_r={}, i_r={})

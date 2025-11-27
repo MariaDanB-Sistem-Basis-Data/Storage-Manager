@@ -348,7 +348,7 @@ def test_hash_index():
 
     # Test 1: Create hash index
     print("\nTest 1: Create hash index on Student.StudentID")
-    sm.set_index("Student", "StudentID", "hash")
+    sm._set_index("Student", "StudentID", "hash")
     
     # Test 2: Search using index 
     print("\nTest 2: SELECT * FROM Student WHERE StudentID = 3")
