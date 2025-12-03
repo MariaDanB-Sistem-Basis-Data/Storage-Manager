@@ -81,7 +81,7 @@ def test_insert_record(sm: StorageManager):
         print(r)
 
 def test_update_record(sm: StorageManager):
-    print_section("TEST 10: UPDATE RECORD IN Student")
+    print_section("TEST 10.1: UPDATE RECORD IN Student")
     write_req = DataWrite(
         table = "Student",
         column = "GPA",
@@ -94,6 +94,29 @@ def test_update_record(sm: StorageManager):
 
     print_section("VERIFY UPDATE: SELECT * FROM Student WHERE StudentID = 3")
     cond = Condition("StudentID", "=", 3)
+    read_req = DataRetrieval(
+        table="Student",
+        column="*",
+        conditions=[cond]
+    )
+    rows = sm.read_block(read_req)
+    print(f"Found {len(rows)} rows")
+    for r in rows:
+        print(r)
+
+def test_update_record_string(sm: StorageManager):
+    print_section("TEST 10.2: UPDATE STRING RECORD IN Student")
+    write_req = DataWrite(
+        table = "Student",
+        column = "FullName",
+        conditions = [Condition("StudentID", "=", 5)],
+        new_value = "Andddddddddd"
+    )
+    row_affected = sm.write_block(write_req)
+    print(f"Rows affected: {row_affected}")
+    print("Updated FullName of StudentID 5 to And")
+    print_section("VERIFY UPDATE: SELECT * FROM Student WHERE StudentID = 5")
+    cond = Condition("StudentID", "=", 5)
     read_req = DataRetrieval(
         table="Student",
         column="*",

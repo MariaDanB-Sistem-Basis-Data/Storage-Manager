@@ -42,7 +42,7 @@ class RowSerializer:
             elif field_type == "char":
                 value, offset = self.encoder.decode_char(byte_data, offset, field_size)
             elif field_type == "varchar":
-                value, offset = self.encoder.decode_varchar(byte_data, offset)
+                value, offset = self.encoder.decode_varchar(byte_data, offset, field_size)
 
             record[field_name] = value
 
