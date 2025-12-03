@@ -81,7 +81,7 @@ def test_insert_record(sm: StorageManager):
         print(r)
 
 def test_update_record(sm: StorageManager):
-    print_section("TEST 10: UPDATE RECORD IN Student")
+    print_section("TEST 10.1: UPDATE RECORD IN Student")
     write_req = DataWrite(
         table = "Student",
         column = "GPA",
@@ -94,6 +94,29 @@ def test_update_record(sm: StorageManager):
 
     print_section("VERIFY UPDATE: SELECT * FROM Student WHERE StudentID = 3")
     cond = Condition("StudentID", "=", 3)
+    read_req = DataRetrieval(
+        table="Student",
+        column="*",
+        conditions=[cond]
+    )
+    rows = sm.read_block(read_req)
+    print(f"Found {len(rows)} rows")
+    for r in rows:
+        print(r)
+
+def test_update_record_string(sm: StorageManager):
+    print_section("TEST 10.2: UPDATE STRING RECORD IN Student")
+    write_req = DataWrite(
+        table = "Student",
+        column = "FullName",
+        conditions = [Condition("StudentID", "=", 5)],
+        new_value = "Andddddddddd"
+    )
+    row_affected = sm.write_block(write_req)
+    print(f"Rows affected: {row_affected}")
+    print("Updated FullName of StudentID 5 to And")
+    print_section("VERIFY UPDATE: SELECT * FROM Student WHERE StudentID = 5")
+    cond = Condition("StudentID", "=", 5)
     read_req = DataRetrieval(
         table="Student",
         column="*",
@@ -399,7 +422,7 @@ def test_btree_index():
     
     # Test 2: Create B+ tree index on StudentID
     print("\n2. Creating BTREE index on StudentID...")
-    sm.set_index("Student", "StudentID", "btree")
+    sm._set_index("Student", "StudentID", "btree")
     stats = sm.get_stats("Student")
     print("✓ B+ tree index created")
     print(f"   Index info after creating btree on StudentID:")
@@ -408,7 +431,7 @@ def test_btree_index():
     
     # Test 3: Create B+ tree index on GPA
     print("\n3. Creating BTREE index on GPA...")
-    sm.set_index("Student", "GPA", "btree")
+    sm._set_index("Student", "GPA", "btree")
     stats = sm.get_stats("Student")
     print("✓ B+ tree index created")
     print(f"   Index info after creating btree on GPA:")
@@ -417,7 +440,7 @@ def test_btree_index():
     
     # Test 4: Create hash index on FullName for mixed type test
     print("\n4. Creating HASH index on FullName (for mixed type test)...")
-    sm.set_index("Student", "FullName", "hash")
+    sm._set_index("Student", "FullName", "hash")
     stats = sm.get_stats("Student")
     print("✓ Hash index created")
     print(f"   Index info with mixed types:")
